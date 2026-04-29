@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BME 674: K-Space Motion Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,600;9..144,800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #d8d8e5;
+    --bg-panel: #b6b6c5;
+    --bg-elevated: #ffffff;
+    --border: #2a2a32;
+    --border-bright: #3a3a45;
+    --text: #0e0e18;
+    --text-dim: #141415;
+    --text-faint: #3f3f48;
+    --accent: #8a7cd1;
+    --accent-dim: #c46217;
+    --green: #27ad51;
+    --red: #ef4444;
+    --amber: #fbbf24;
+    --grid: rgba(255, 87, 34, 0.06);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  body {
+    background-image:
+      radial-gradient(circle at 20% 10%, rgba(255, 87, 34, 0.04) 0%, transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(74, 222, 128, 0.03) 0%, transparent 40%);
+    padding: 32px 24px 48px;
+  }
+
+  .container {
+    max-width: 1400px;
+    margin: 0 auto;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 20px;
+    margin-bottom: 32px;
+  }
+
+  .title-group h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 42px;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+
+  .title-group h1 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .subtitle {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+  }
+
+  .meta {
+    text-align: right;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    line-height: 1.6;
+  }
+
+  .meta .live {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--green);
+  }
+
+  .meta .live::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  /* Panels grid */
+  .panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .panel {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .panel-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--text-dim);
+  }
+
+  .panel-label .num {
+    color: var(--accent);
+    margin-right: 6px;
+    font-weight: 700;
+  }
+
+  .panel-status {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-faint);
+    padding: 2px 6px;
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    background: #000;
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .canvas-wrap canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  /* Scan line overlay */
+  .scan-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    mix-blend-mode: screen;
+  }
+
+  /* Panel readouts */
+  .readouts {
+    margin-top: 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    font-size: 10px;
+  }
+
+  .readout {
+    display: flex;
+    justify-content: space-between;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .readout .val {
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .readout .val.warn { color: var(--red); }
+  .readout .val.ok { color: var(--green); }
+
+  /* Controls bar */
+  .controls {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+
+  .controls-section {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .controls-section + .controls-section {
+    border-left: 1px solid var(--border);
+    padding-left: 16px;
+  }
+
+  .controls-section .lbl {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+  }
+
+  button {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border-bright);
+    padding: 9px 16px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    border-radius: 2px;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--border);
+    border-color: var(--text-dim);
+  }
+
+  button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  button.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+    font-weight: 700;
+  }
+
+  button.primary:hover:not(:disabled) {
+    background: var(--accent-dim);
+    border-color: var(--accent-dim);
+  }
+
+  button.danger {
+    background: transparent;
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  button.danger:hover:not(:disabled) {
+    background: var(--red);
+    color: #000;
+  }
+
+  button.danger.active {
+    background: var(--red);
+    color: #000;
+    animation: shake 0.3s infinite;
+  }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-1px); }
+    75% { transform: translateX(1px); }
+  }
+
+  /* Speed slider */
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 120px;
+    height: 2px;
+    background: var(--border-bright);
+    outline: none;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    background: var(--accent);
+    border-radius: 50%;
+    cursor: pointer;
+    border: none;
+  }
+
+  /* File upload */
+  .file-label {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    background: var(--bg-elevated);
+    color: var(--text);
+    border: 1px solid var(--border-bright);
+    padding: 9px 16px;
+    cursor: pointer;
+    border-radius: 2px;
+    display: inline-block;
+    transition: all 0.15s ease;
+  }
+
+  .file-label:hover {
+    background: var(--border);
+    border-color: var(--text-dim);
+  }
+
+  input[type="file"] {
+    display: none;
+  }
+
+  /* Progress bar */
+  .progress-strip {
+    margin-top: 24px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 20px;
+  }
+
+  .progress-row {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 10px;
+  }
+
+  .progress-row:last-child { margin-bottom: 0; }
+
+  .progress-row .lbl {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    min-width: 110px;
+  }
+
+  .progress-bar {
+    flex: 1;
+    height: 4px;
+    background: var(--bg);
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width 0.05s linear;
+  }
+
+  .progress-fill.motion {
+    background: linear-gradient(90deg, var(--green) 0%, var(--green) var(--clean-pct), var(--red) var(--clean-pct), var(--red) 100%);
+  }
+
+  .progress-row .val {
+    font-size: 11px;
+    color: var(--text);
+    min-width: 70px;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Footer info */
+  .info-footer {
+    margin-top: 32px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+
+  .info-footer h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-size: 14px;
+    color: var(--text);
+    margin-bottom: 8px;
+    font-style: italic;
+  }
+
+  .info-footer .num {
+    color: var(--accent);
+    font-weight: 700;
+    margin-right: 6px;
+  }
+
+  /* ============================================================
+     POST-SCAN ANALYSIS BANNERS
+     ============================================================ */
+  .post-scan {
+    margin-top: 24px;
+  }
+
+  .clean-banner {
+    background: var(--bg-panel);
+    border: 1px solid var(--green);
+    border-left: 4px solid var(--green);
+    border-radius: 4px;
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    animation: slideIn 0.4s ease-out;
+  }
+
+  .clean-banner .icon {
+    width: 32px;
+    height: 32px;
+    border: 2px solid var(--green);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--green);
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .clean-banner .text h3 {
+    font-family: 'Fraunces', serif;
+    font-weight: 400;
+    font-style: italic;
+    font-size: 18px;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .clean-banner .text p {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text-dim);
+  }
+
+  /* ============================================================
+     CORRECTION SECTION
+     ============================================================ */
+  .correction-section {
+    margin-top: 24px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--accent);
+    border-radius: 4px;
+    padding: 24px;
+    animation: slideIn 0.5s ease-out;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .correction-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    margin-bottom: 20px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .correction-title h2 {
+    font-family: 'Fraunces', serif;
+    font-weight: 300;
+    font-size: 28px;
+    line-height: 1;
+    margin-bottom: 6px;
+    color: var(--text);
+  }
+
+  .correction-title h2 em {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--accent);
+  }
+
+  .correction-title .sub {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--text-dim);
+  }
+
+  .correction-meta {
+    text-align: right;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-faint);
+    line-height: 1.6;
+  }
+
+  .correction-meta .stage {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  /* Stage indicators */
+  .stages {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+
+  .stage-pill {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.3s ease;
+    opacity: 0.5;
+  }
+
+  .stage-pill.active {
+    opacity: 1;
+    border-color: var(--accent);
+    background: var(--bg-panel);
+    box-shadow: 0 0 0 1px var(--accent);
+  }
+
+  .stage-pill.done {
+    opacity: 1;
+    border-color: var(--green);
+  }
+
+  .stage-pill .num {
+    width: 22px;
+    height: 22px;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .stage-pill.active .num { color: var(--accent); }
+  .stage-pill.done .num { color: var(--green); border-color: var(--green); }
+
+  .stage-pill .lbl {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text);
+    line-height: 1.3;
+  }
+
+  .stage-pill .lbl .det {
+    display: block;
+    color: var(--text-dim);
+    font-size: 9px;
+    margin-top: 2px;
+  }
+
+  /* Correction panels */
+  .correction-panels {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+
+  .correction-panels .panel {
+    background: var(--bg-elevated);
+  }
+
+  /* Run/info bar inside correction section */
+  .correction-run-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 14px 16px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+  }
+
+  .correction-run-bar .info {
+    flex: 1;
+    font-size: 11px;
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  .correction-run-bar .info strong {
+    color: var(--accent);
+    font-weight: 700;
+  }
+
+  .correction-footnote {
+    margin-top: 16px;
+    padding: 12px 16px;
+    background: var(--bg-elevated);
+    border-left: 2px solid var(--text-faint);
+    font-size: 10px;
+    color: var(--text);
+    line-height: 1.6;
+    font-style: italic;
+  }
+
+    button.danger.attention {
+    animation: attentionPulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes attentionPulse {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(239, 94, 68, 0.7);
+      transform: scale(1);
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(239, 94, 68, 0);
+      transform: scale(1.04);
+    }
+  }
+
+  /* Responsive */
+  @media (max-width: 1000px) {
+    .panels { grid-template-columns: 1fr; }
+    .correction-panels { grid-template-columns: 1fr; }
+    .stages { grid-template-columns: 1fr; }
+    .info-footer { grid-template-columns: 1fr; }
+    header, .correction-header { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .meta, .correction-meta { text-align: left; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="title-group">
+      <h1><em>BME 674: </em> MRI Motion Correction Demonstration</h1>
+      <div class="subtitle">Gabriel Jonsson · Luke Ragland:  Post-scan motion artifact reduction for MRI with deep learning and k-space analysis</div>
+    </div>
+    <div class="meta">
+      <div class="live" id="systemStatus">SYSTEM IDLE</div>
+      <div>RES 256 × 256 · GRAYSCALE</div>
+      <div id="metaProgress">PE LINE 0 / 256</div>
+    </div>
+  </header>
+
+    <!-- Controls -->
+  <div class="controls">
+    <div class="controls-section">
+      <span class="lbl">Acquisition</span>
+      <button class="primary" id="startBtn">▶ Start Scan</button>
+      <button id="resetBtn">↻ Reset</button>
+    </div>
+    <div class="controls-section">
+      <span class="lbl">Patient</span>
+      <button class="danger" id="wiggleBtn" disabled>⚠ Wiggle Patient</button>
+    </div>
+    <div class="controls-section">
+      <span class="lbl">Speed</span>
+      <input type="range" id="speedSlider" min="1" max="20" value="6">
+      <span class="lbl" id="speedRead">6×</span>
+    </div>
+    <div class="controls-section">
+      <span class="lbl">Image</span>
+      <label class="file-label" for="fileInput">Upload</label>
+      <input type="file" id="fileInput" accept="image/*">
+      <button id="demoBtn">Random</button>
+    </div>
+  </div>
+
+  <div class="panels">
+
+    <!-- LEFT PANEL: Source image with scan line -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-label"><span class="num">01</span> SOURCE</div>
+        <div class="panel-status" id="sourceStatus">READY</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="sourceCanvas" width="256" height="256"></canvas>
+        <canvas class="scan-overlay" id="scanOverlay" width="256" height="256"></canvas>
+      </div>
+      <div class="readouts">
+        <div class="readout"><span>Δx</span><span class="val" id="dxRead">0.0</span></div>
+        <div class="readout"><span>Δy</span><span class="val" id="dyRead">0.0</span></div>
+        <div class="readout"><span>θ</span><span class="val" id="rotRead">0.0°</span></div>
+        <div class="readout"><span>State</span><span class="val ok" id="stateRead">STILL</span></div>
+      </div>
+    </div>
+
+    <!-- MIDDLE PANEL: K-space being filled -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-label"><span class="num">02</span> K-SPACE</div>
+        <div class="panel-status" id="kspaceStatus">EMPTY</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="kspaceCanvas" width="256" height="256"></canvas>
+      </div>
+      <div class="readouts">
+        <div class="readout"><span>Lines</span><span class="val" id="linesRead">0</span></div>
+        <div class="readout"><span>Clean</span><span class="val ok" id="cleanRead">0</span></div>
+        <div class="readout"><span>Corrupt</span><span class="val warn" id="corruptRead">0</span></div>
+        <div class="readout"><span>Mode</span><span class="val" id="modeRead">CARTESIAN</span></div>
+      </div>
+    </div>
+
+    <!-- RIGHT PANEL: Reconstruction -->
+    <div class="panel">
+      <div class="panel-header">
+        <div class="panel-label"><span class="num">03</span> RECONSTRUCTION</div>
+        <div class="panel-status" id="reconStatus">WAITING</div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="reconCanvas" width="256" height="256"></canvas>
+      </div>
+      <div class="readouts">
+        <div class="readout"><span>Method</span><span class="val">IFFT</span></div>
+        <div class="readout"><span>Filled</span><span class="val" id="filledRead">0%</span></div>
+        <div class="readout"><span>Quality</span><span class="val" id="qualityRead">—</span></div>
+        <div class="readout"><span>Filter</span><span class="val" id="filterRead">NONE</span></div>
+      </div>
+    </div>
+
+  </div>
+
+
+
+  <!-- Progress -->
+  <div class="progress-strip">
+    <div class="progress-row">
+      <span class="lbl">Acquisition Progress</span>
+      <div class="progress-bar"><div class="progress-fill" id="acqProgress"></div></div>
+      <span class="val" id="acqProgressVal">0 / 256</span>
+    </div>
+    <div class="progress-row">
+      <span class="lbl">Motion Timeline</span>
+      <div class="progress-bar"><div class="progress-fill motion" id="motionProgress" style="--clean-pct: 100%"></div></div>
+      <span class="val" id="motionProgressVal">100% clean</span>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       POST-SCAN ANALYSIS — populated after scan completes
+       ============================================================ -->
+  <div class="post-scan" id="postScan" style="display: none;">
+
+    <!-- Clean banner: shown if no motion was detected -->
+    <div class="clean-banner" id="cleanBanner" style="display: none;">
+      <div class="icon">✓</div>
+      <div class="text">
+        <h3>No artifacts detected</h3>
+        <p>All 256 phase-encoding lines acquired motion-free · No correction needed</p>
+      </div>
+    </div>
+
+    <!-- Correction section: shown if motion was detected -->
+    <div class="correction-section" id="correctionSection" style="display: none;">
+
+      <div class="correction-header">
+        <div class="correction-title">
+          <h2>K-Space <em>CNN</em> Motion Correction</h2>
+          <div class="sub">Retroactive Artifact Detection &amp; Reconstruction</div>
+        </div>
+        <div class="correction-meta">
+          <div>STAGE <span class="stage" id="stageIndicator">— / 3</span></div>
+          <div id="corruptLineCount">— corrupted lines detected</div>
+        </div>
+      </div>
+
+      <!-- Run bar -->
+      <div class="correction-run-bar">
+        <div class="info" id="correctionInfo">
+          Motion artifacts detected in the reconstruction. Press <strong>Run Correction</strong> to identify the affected k-space lines and rebuild a clean image from corrected data.
+        </div>
+        <button class="primary" id="runCorrectionBtn">▶ Run Correction</button>
+      </div>
+
+      <!-- Stage progress pills -->
+      <div class="stages">
+        <div class="stage-pill" id="stagePill1">
+          <div class="num">1</div>
+          <div class="lbl">
+            Detect Artifacts
+            <span class="det">Identify Motion Artifacts using CNN</span>
+          </div>
+        </div>
+        <div class="stage-pill" id="stagePill2">
+          <div class="num">2</div>
+          <div class="lbl">
+            Flag K-Space Lines
+            <span class="det">Identify rows acquired during motion</span>
+          </div>
+        </div>
+        <div class="stage-pill" id="stagePill3">
+          <div class="num">3</div>
+          <div class="lbl">
+            Reconstruct
+            <span class="det">Adjust the output using split-Bregman theroem</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Three correction panels -->
+      <div class="correction-panels">
+
+        <!-- Panel A: Corrupted image with red artifact overlay -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-label"><span class="num">A</span> ARTIFACT MAP</div>
+            <div class="panel-status" id="corrPanel1Status">PENDING</div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="corruptedCanvas" width="256" height="256"></canvas>
+            <canvas class="scan-overlay" id="corruptedOverlay" width="256" height="256"></canvas>
+          </div>
+          <div class="readouts">
+            <div class="readout"><span>Source</span><span class="val">CORRUPTED</span></div>
+            <div class="readout"><span>Highlight</span><span class="val warn">RED</span></div>
+            <div class="readout"><span>Pixels Bad</span><span class="val warn" id="badPxRead">—</span></div>
+            <div class="readout"><span>Threshold</span><span class="val" id="threshRead">0.12</span></div>
+          </div>
+        </div>
+
+        <!-- Panel B: K-space with bad lines highlighted blue -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-label"><span class="num">B</span> FLAGGED K-SPACE</div>
+            <div class="panel-status" id="corrPanel2Status">PENDING</div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="flaggedKspaceCanvas" width="256" height="256"></canvas>
+            <canvas class="scan-overlay" id="flaggedKspaceOverlay" width="256" height="256"></canvas>
+          </div>
+          <div class="readouts">
+            <div class="readout"><span>Total Lines</span><span class="val" id="totalLinesRead">256</span></div>
+            <div class="readout"><span>Flagged</span><span class="val warn" id="flaggedLinesRead">—</span></div>
+            <div class="readout"><span>Kept</span><span class="val ok" id="keptLinesRead">—</span></div>
+            <div class="readout"><span>Highlight</span><span class="val" style="color: #4acdde">BLUE</span></div>
+          </div>
+        </div>
+
+        <!-- Panel C: Final corrected reconstruction -->
+        <div class="panel">
+          <div class="panel-header">
+            <div class="panel-label"><span class="num">C</span> CORRECTED</div>
+            <div class="panel-status" id="corrPanel3Status">PENDING</div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="correctedCanvas" width="256" height="256"></canvas>
+          </div>
+          <div class="readouts">
+            <div class="readout"><span>Method</span><span class="val">IFFT (CLEAN)</span></div>
+            <div class="readout"><span>Lines Used</span><span class="val ok" id="usedLinesRead">—</span></div>
+            <div class="readout"><span>Improvement</span><span class="val ok" id="improveRead">—</span></div>
+            <div class="readout"><span>Filter</span><span class="val ok">APPLIED</span></div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
